@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.github
+*.log
+*.md
+docs
+.DS_Store
+.vscode
+.idea
+Dockerfile
+.dockerignore
