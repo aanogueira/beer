@@ -1,161 +1,196 @@
 "use client";
 
-import GraphDisplay from '@/components/GraphDisplay';
-import { Team } from '@/lib/types';
-import { readTeams, writeTeams } from '@/lib/utils';
-import { useEffect, useState } from 'react';
-import { ChevronRight, Plus } from 'lucide-react';
-import DrinkIncrement from '@/components/DrinkIncrement';
-import DrinkCounter from '@/components/DrinksCounter';
-
-// Extended color palette - 50 colors (with no duplicates)
-const colorPalette = [
-  // Blues
-  '#0ea5e9', '#3b82f6', '#2563eb', '#1d4ed8', '#1e40af', '#1e3a8a', '#0369a1', '#0284c7', '#0891b2', '#06b6d4',
-  // Greens
-  '#10b981', '#059669', '#047857', '#065f46', '#047c5a', '#16a34a', '#15803d', '#166534', '#14532d', '#84cc16',
-  // Purples
-  '#8b5cf6', '#7c3aed', '#6d28d9', '#5b21b6', '#4c1d95', '#7e22ce', '#6b21a8', '#581c87', '#4338ca', '#4f46e5',
-  // Reds/Oranges/Yellows
-  '#ef4444', '#dc2626', '#b91c1c', '#991b1b', '#7f1d1d', '#f59e0b', '#d97706', '#b45309', '#92400e', '#78350f',
-  // Pinks/Fuchsias
-  '#ec4899', '#db2777', '#be185d', '#9d174d', '#831843', '#e879f9', '#d946ef', '#c026d3', '#a21caf', '#86198f',
-  // Teals/Cyans
-  '#14b8a6', '#0d9488', '#0f766e', '#115e59', '#134e4a', '#06b6d4', '#0e7490', '#155e75', '#164e63', '#0f766e',
-];
+import GraphDisplay from "@/components/GraphDisplay";
+import { Team } from "@/lib/types";
+import { readTeams, writeTeams } from "@/lib/utils";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronRight, Plus } from "lucide-react";
+import DrinkIncrement from "@/components/DrinkIncrement";
+import DrinkCounter from "@/components/DrinksCounter";
+import { useLang } from "@/lib/lang-context";
+import { pickNextColor } from "@/lib/colors";
+import { Pattern, pickNextPattern } from "@/lib/patterns";
 
 export default function Home() {
-  const [teams, setTeams] = useState([] as Team[]);
+  const { t } = useLang();
+  const [hydrated, setHydrated] = useState(false);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [selectedTeamName, setSelectedTeamName] = useState<string | undefined>(undefined);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [showAddTeam, setShowAddTeam] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   useEffect(() => {
-    const initialTeams = readTeams();
-    setTeams(initialTeams);
+    // Hydrate from localStorage on the client; setState here is intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTeams(readTeams());
+    setHydrated(true);
   }, []);
 
-  const [selectedTeam, setSelectedTeam] = useState<Team | undefined>(undefined);
-  const [newTeamName, setNewTeamName] = useState('');
-  const [showAddTeam, setShowAddTeam] = useState(false);
+  const selectedTeam = useMemo(
+    () => teams.find((tm) => tm.name === selectedTeamName),
+    [teams, selectedTeamName],
+  );
 
   const addDrinks = (teamName: string, amount: number) => {
-    // Update state with the new drink count
-    const updatedTeams = teams.map((team: Team) =>
-      team.name === teamName ? { ...team, drinks: Math.max(0, team.drinks + amount) } : team
+    setTeams((prev) => {
+      const updated = prev.map((tm) =>
+        tm.name === teamName ? { ...tm, drinks: Math.max(0, tm.drinks + amount) } : tm,
+      );
+      writeTeams(updated);
+      return updated;
+    });
+  };
+
+  const submitNewTeam = () => {
+    const trimmed = newTeamName.trim();
+    if (!trimmed) {
+      setAddError(t.emptyTeamName);
+      return;
+    }
+    const lower = trimmed.toLowerCase();
+    if (teams.some((tm) => tm.name.toLowerCase() === lower)) {
+      setAddError(t.duplicateTeam);
+      return;
+    }
+    const color = pickNextColor(teams.map((tm) => tm.color));
+    const pattern: Pattern = pickNextPattern(
+      teams.map((tm) => tm.pattern ?? "solid"),
     );
-
-    // Update state
-    setTeams(updatedTeams);
-
-    // Save to storage
-    writeTeams(updatedTeams);
-
-    // Update selected team if it's the one being modified
-    if (selectedTeam && selectedTeam.name === teamName) {
-      setSelectedTeam({
-        ...selectedTeam,
-        drinks: Math.max(0, selectedTeam.drinks + amount)
-      });
-    }
+    const newTeam: Team = { name: trimmed, drinks: 0, color, pattern };
+    const updated = [...teams, newTeam];
+    setTeams(updated);
+    writeTeams(updated);
+    setSelectedTeamName(newTeam.name);
+    setNewTeamName("");
+    setShowAddTeam(false);
+    setAddError(null);
   };
 
-  const addTeam = () => {
-    if (newTeamName.trim()) {
-      // Get a random color from our extended palette
-      const randomColor = colorPalette[Math.floor(Math.random() * colorPalette.length)];
-
-      // Create new team
-      const newTeam = { name: newTeamName, drinks: 0, color: randomColor } as Team;
-
-      // Update state with new team
-      const updatedTeams = [...teams, newTeam];
-      setTeams(updatedTeams);
-
-      // Save to storage
-      writeTeams(updatedTeams);
-
-      // Select the new team
-      setSelectedTeam(newTeam);
-
-      // Reset UI state
-      setNewTeamName('');
-      setShowAddTeam(false);
-    }
+  const cancelAddTeam = () => {
+    setShowAddTeam(false);
+    setNewTeamName("");
+    setAddError(null);
   };
 
-  const totalDrinks = teams.reduce((total, team) => total + team.drinks, 0);
+  const totalDrinks = teams.reduce((sum, tm) => sum + tm.drinks, 0);
 
   return (
-    <div className="flex flex-col p-6 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+    <div
+      className="flex flex-col min-h-screen p-6"
+      style={{
+        background:
+          "radial-gradient(1200px 600px at 50% -10%, #fff7e6 0%, transparent 60%), linear-gradient(180deg, #fffbeb 0%, #fde68a30 100%)",
+      }}
+    >
       <div className="max-w-6xl mx-auto w-full">
-        <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
+        <div
+          className="rounded-2xl shadow-xl p-8 mb-8 border border-amber-100/80"
+          style={{
+            background: "linear-gradient(180deg, #ffffff 0%, #fffaf0 100%)",
+          }}
+        >
           <DrinkCounter totalDrinks={totalDrinks} />
 
-          <GraphDisplay teams={teams} />
+          {hydrated ? (
+            <GraphDisplay teams={teams} onSelect={setSelectedTeamName} />
+          ) : (
+            <div className="h-72 mb-8" aria-hidden="true" />
+          )}
 
-          <div className="flex mb-8">
-            <div className="w-1/3 pr-6 border-r border-gray-200">
-              <h2 className="text-xl font-semibold mb-7 mt-2 text-gray-700">Selecione uma Equipa</h2>
-              <div className="bg-gray-50 rounded-xl overflow-hidden shadow-sm">
-                {teams.map((team) => (
-                  <div
-                    key={team.name}
-                    onClick={() => setSelectedTeam(team)}
-                    className={`flex justify-between items-center p-4 cursor-pointer transition-colors duration-200 border-l-4 ${selectedTeam?.name === team.name
-                      ? 'bg-gray-100 border-l-blue-500'
-                      : `hover:bg-gray-100 border-l-transparent`
-                      }`}
-                    style={{ borderBottomWidth: '1px', borderBottomColor: '#e5e7eb' }}
-                  >
-                    <div className="flex items-center">
+          <div className="flex flex-col md:flex-row mb-2 gap-6">
+            <div className="md:w-1/3 md:pr-6 md:border-r border-amber-100">
+              <h2 className="text-xl font-semibold mb-5 mt-2 text-amber-900">
+                {t.selectTeam}
+              </h2>
+              <div className="bg-amber-50/60 rounded-xl overflow-hidden shadow-sm border border-amber-100">
+                {hydrated &&
+                  teams.map((team) => {
+                    const active = selectedTeamName === team.name;
+                    return (
                       <div
-                        className="w-3 h-3 rounded-full mr-3"
-                        style={{ backgroundColor: team.color }}
-                      ></div>
-                      <span className="font-medium">{team.name}</span>
-                    </div>
-                    <div className="flex items-center">
-                      <span className="font-semibold mr-2">{team.drinks}</span>
-                      <ChevronRight size={16} className="text-gray-400" />
-                    </div>
-                  </div>
-                ))}
+                        key={team.name}
+                        onClick={() => setSelectedTeamName(team.name)}
+                        className={
+                          "flex justify-between items-center p-4 cursor-pointer transition-colors duration-200 border-l-4 border-b border-b-amber-100 " +
+                          (active
+                            ? "bg-amber-100/70 border-l-amber-600"
+                            : "hover:bg-amber-100/40 border-l-transparent")
+                        }
+                        style={
+                          active
+                            ? { boxShadow: "inset 0 2px 0 0 #fef3c7" }
+                            : undefined
+                        }
+                      >
+                        <div className="flex items-center">
+                          <div
+                            className="w-3 h-3 rounded-full mr-3 ring-2 ring-white"
+                            style={{ backgroundColor: team.color }}
+                          />
+                          <span className="font-medium text-amber-950">
+                            {team.name}
+                          </span>
+                        </div>
+                        <div className="flex items-center">
+                          <span className="font-semibold mr-2 text-amber-900">
+                            {team.drinks}
+                          </span>
+                          <ChevronRight size={16} className="text-amber-700/60" />
+                        </div>
+                      </div>
+                    );
+                  })}
 
-                {
-                  !showAddTeam && (
-                    <div
-                      onClick={() => setShowAddTeam(true)}
-                      className="flex items-center justify-center p-4 hover:bg-gray-50 cursor-pointer transition-colors duration-200"
-                    >
-                      <Plus size={18} className="mr-2 text-amber-700" />
-                      <span className="font-medium">
-                        Adicionar Equipa
-                      </span>
-                    </div>
-                  )
-                }
+                {!showAddTeam && (
+                  <div
+                    onClick={() => setShowAddTeam(true)}
+                    className="flex items-center justify-center p-4 hover:bg-amber-100/50 cursor-pointer transition-colors duration-200 text-amber-800"
+                  >
+                    <Plus size={18} className="mr-2" />
+                    <span className="font-semibold">{t.addTeam}</span>
+                  </div>
+                )}
               </div>
 
               {showAddTeam && (
-                <div className="mt-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
-                  <h3 className="font-medium mb-2 text-gray-700">Nova Equipa</h3>
+                <div className="mt-4 bg-amber-50/80 p-4 rounded-xl border border-amber-200">
+                  <h3 className="font-medium mb-2 text-amber-900">{t.newTeam}</h3>
                   <div className="flex flex-col space-y-3">
                     <input
                       type="text"
                       value={newTeamName}
-                      onChange={(e) => setNewTeamName(e.target.value)}
-                      placeholder="Nome da equipa"
-                      className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:outline-none text-gray-700"
+                      onChange={(e) => {
+                        setNewTeamName(e.target.value);
+                        if (addError) setAddError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") submitNewTeam();
+                        else if (e.key === "Escape") cancelAddTeam();
+                      }}
+                      placeholder={t.teamNamePlaceholder}
+                      className="w-full py-2 px-3 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none text-amber-950 bg-white"
                       autoFocus
                     />
+                    {addError && (
+                      <p className="text-sm text-red-700" role="alert">
+                        {addError}
+                      </p>
+                    )}
                     <div className="flex space-x-2">
                       <button
-                        onClick={addTeam}
-                        className="bg-amber-600 hover:bg-amber-700 text-white py-2 px-4 rounded-lg transition-colors duration-200 font-medium flex-1">
-                        Adicionar
+                        type="button"
+                        onClick={submitNewTeam}
+                        className="bg-amber-600 hover:bg-amber-700 text-white py-2 px-4 rounded-lg transition-colors duration-200 font-medium flex-1"
+                      >
+                        {t.add}
                       </button>
                       <button
-                        onClick={() => setShowAddTeam(false)}
-                        className="bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 px-4 rounded-lg transition-colors duration-200 font-medium">
-                        Cancelar
+                        type="button"
+                        onClick={cancelAddTeam}
+                        className="bg-amber-100 hover:bg-amber-200 text-amber-900 py-2 px-4 rounded-lg transition-colors duration-200 font-medium"
+                      >
+                        {t.cancel}
                       </button>
                     </div>
                   </div>
@@ -168,4 +203,4 @@ export default function Home() {
       </div>
     </div>
   );
-};
+}
