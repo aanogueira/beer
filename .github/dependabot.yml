@@ -14,6 +14,12 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    ignore:
+      # eslint v10 breaks the eslint-plugin-react bundled with
+      # eslint-config-next 16 (uses removed context.getFilename()).
+      # Re-enable once eslint-config-next ships a v10-compatible plugin.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
     groups:
       next-react:
         patterns:

@@ -197,8 +197,8 @@ export default function GraphDisplay({ teams, onSelect }: GraphDisplayProps) {
   }
 
   return (
-    <div className="h-72 mb-8">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="h-72 mb-8 w-full">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
         <BarChart
           data={teams}
           margin={{ top: 18, right: 30, left: 10, bottom: 10 }}
